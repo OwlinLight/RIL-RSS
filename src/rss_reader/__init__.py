@@ -1,23 +1,21 @@
-"""Simple RSS reader CLI.
-
-This script allows users to input an RSS feed URL and prints the parsed
-entries including title, publication date, and description.
-"""
+"""RSS reader library with CLI and web-friendly helpers."""
 
 from __future__ import annotations
 
+import json
 import sys
 import textwrap
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
-from typing import List, Optional
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
 class RSSItem:
-    """Represents a single item within an RSS feed."""
+    """Represents a single item within an RSS/Atom feed."""
 
     title: str
     link: str
@@ -26,62 +24,109 @@ class RSSItem:
 
 
 def fetch_feed(url: str, timeout: float = 10.0) -> bytes:
-    """Fetch RSS feed from a URL.
+    """Fetch feed bytes from a URL."""
 
-    Args:
-        url: The RSS feed URL.
-        timeout: Timeout for the network request in seconds.
-
-    Returns:
-        Raw bytes of the RSS feed.
-
-    Raises:
-        ValueError: If the URL cannot be retrieved.
-    """
+    _validate_feed_url(url)
 
     request = urllib.request.Request(url, headers={"User-Agent": "RIL-RSS Reader/1.0"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.read()
+            return response.read(2_000_000)
     except urllib.error.URLError as exc:  # pragma: no cover - network errors tested via ValueError
         raise ValueError(f"Unable to retrieve RSS feed: {exc}") from exc
 
 
+def _validate_feed_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Feed URL must be an absolute http(s) URL")
+
+
 def parse_feed(feed_data: bytes) -> List[RSSItem]:
-    """Parse RSS XML data into RSSItem instances."""
+    """Parse RSS/Atom XML data into RSSItem instances."""
 
     try:
         root = ET.fromstring(feed_data)
     except ET.ParseError as exc:
-        raise ValueError("Invalid RSS feed data") from exc
+        raise ValueError("Invalid feed XML data") from exc
 
-    channel = root.find("channel")
+    tag_name = _strip_namespace(root.tag)
+    if tag_name == "rss":
+        return _parse_rss(root)
+    if tag_name == "feed":
+        return _parse_atom(root)
+
+    raise ValueError("Unsupported feed format")
+
+
+def _parse_rss(root: ET.Element) -> List[RSSItem]:
+    channel = _find_child(root, "channel")
     if channel is None:
         raise ValueError("Missing channel element in RSS feed")
 
     items: List[RSSItem] = []
-    for item in channel.findall("item"):
+    for item in _find_children(channel, "item"):
         title = _get_text(item, "title") or "Untitled"
         link = _get_text(item, "link") or ""
-        description = _get_text(item, "description") or ""
+        description = _get_text(item, "description") or _get_text(item, "content") or ""
         pub_date = _get_text(item, "pubDate")
         items.append(RSSItem(title=title, link=link, description=description, pub_date=pub_date))
-
     return items
 
 
-def _get_text(parent: ET.Element, tag: str) -> Optional[str]:
-    element = parent.find(tag)
-    if element is not None and element.text:
-        return element.text.strip()
+def _parse_atom(root: ET.Element) -> List[RSSItem]:
+    items: List[RSSItem] = []
+    for entry in _find_children(root, "entry"):
+        title = _get_text(entry, "title") or "Untitled"
+        link = _extract_atom_link(entry)
+        description = _get_text(entry, "summary") or _get_text(entry, "content") or ""
+        pub_date = _get_text(entry, "updated") or _get_text(entry, "published")
+        items.append(RSSItem(title=title, link=link, description=description, pub_date=pub_date))
+    return items
+
+
+def _extract_atom_link(entry: ET.Element) -> str:
+    for child in entry:
+        if _strip_namespace(child.tag) != "link":
+            continue
+        rel = child.attrib.get("rel", "alternate")
+        href = child.attrib.get("href", "")
+        if rel == "alternate" and href:
+            return href
+        if href:
+            return href
+    return ""
+
+
+def _find_child(parent: ET.Element, name: str) -> Optional[ET.Element]:
+    for child in parent:
+        if _strip_namespace(child.tag) == name:
+            return child
     return None
 
 
+def _find_children(parent: ET.Element, name: str) -> List[ET.Element]:
+    return [child for child in parent if _strip_namespace(child.tag) == name]
+
+
+def _get_text(parent: ET.Element, tag: str) -> Optional[str]:
+    child = _find_child(parent, tag)
+    if child is not None and child.text:
+        return child.text.strip()
+    return None
+
+
+def _strip_namespace(tag: str) -> str:
+    if "}" in tag:
+        return tag.split("}", 1)[1]
+    return tag
+
+
 def display_items(items: List[RSSItem]) -> None:
-    """Display RSS items to stdout."""
+    """Display feed items to stdout."""
 
     if not items:
-        print("No items found in RSS feed.")
+        print("No items found in feed.")
         return
 
     for index, item in enumerate(items, start=1):
@@ -98,23 +143,31 @@ def display_items(items: List[RSSItem]) -> None:
         print()
 
 
+def parse_feed_url(url: str) -> List[RSSItem]:
+    """Fetch and parse a feed URL in one step."""
+
+    return parse_feed(fetch_feed(url))
+
+
+def items_to_json(items: List[RSSItem]) -> str:
+    """Serialize feed items as JSON for the web frontend."""
+
+    payload: List[Dict[str, Any]] = [asdict(item) for item in items]
+    return json.dumps(payload)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """Entry point for the CLI."""
 
     argv = list(sys.argv[1:] if argv is None else argv)
-
-    if argv:
-        url = argv[0]
-    else:
-        url = input("Enter RSS feed URL: ").strip()
+    url = argv[0] if argv else input("Enter RSS feed URL: ").strip()
 
     if not url:
         print("RSS feed URL is required.", file=sys.stderr)
         return 1
 
     try:
-        feed_data = fetch_feed(url)
-        items = parse_feed(feed_data)
+        items = parse_feed_url(url)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

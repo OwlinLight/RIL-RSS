@@ -1,27 +1,57 @@
 # RIL-RSS Reader
 
-A simple RSS reader that fetches an RSS feed from a provided URL and displays
-its entries in the terminal.
+An RSS/Atom reader with both a command-line interface and a lightweight web
+frontend. You can provide a feed URL and the app will fetch, parse, and render
+its entries.
+
+## Features
+
+- Parse RSS 2.0 and Atom feeds
+- CLI usage for quick terminal reading
+- Frontend UI with URL input + rendered feed cards
+- Vercel-ready deployment config
+- URL validation (http/https) and friendly API errors
 
 ## Installation
 
-This project has no external dependencies beyond the Python standard library
-for the application itself. The test suite relies on `pytest`.
-
-## Usage
-
-Run the reader via the module entry point:
-
 ```bash
-python -m rss_reader <rss_feed_url>
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-If no URL is provided as an argument, the program will prompt for one.
+## CLI usage
+
+```bash
+PYTHONPATH=src python -m rss_reader <rss_feed_url>
+```
+
+If no URL is provided as an argument, the program prompts for one.
+
+## Run the frontend locally
+
+```bash
+export FLASK_APP=rss_reader.web:app
+PYTHONPATH=src flask run --debug
+```
+
+Then open `http://127.0.0.1:5000`.
+
+The API accepts either:
+- `POST /api/parse` with JSON body `{ "url": "https://..." }`
+- `GET /api/parse?url=https://...`
+
+## Deploy on Vercel
+
+This repo includes `vercel.json` and an API entrypoint at `api/index.py`.
+
+1. Push the repo to GitHub.
+2. Import the project in Vercel.
+3. Keep default settings (Vercel will detect `vercel.json`).
+4. Deploy.
 
 ## Testing
 
-Install `pytest` if it is not available and run:
-
 ```bash
-pytest
+PYTHONPATH=src pytest
 ```
