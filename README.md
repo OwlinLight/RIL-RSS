@@ -10,6 +10,7 @@ its entries.
 - CLI usage for quick terminal reading
 - Frontend UI with URL input + rendered feed cards
 - Vercel-ready deployment config
+- URL validation (http/https) and friendly API errors
 
 ## Installation
 
@@ -35,6 +36,10 @@ PYTHONPATH=src flask run --debug
 ```
 
 Then open `http://127.0.0.1:5000`.
+
+The API accepts either:
+- `POST /api/parse` with JSON body `{ "url": "https://..." }`
+- `GET /api/parse?url=https://...`
 
 ## Deploy on Vercel
 

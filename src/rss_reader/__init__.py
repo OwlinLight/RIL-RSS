@@ -7,6 +7,7 @@ import sys
 import textwrap
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional
@@ -25,12 +26,20 @@ class RSSItem:
 def fetch_feed(url: str, timeout: float = 10.0) -> bytes:
     """Fetch feed bytes from a URL."""
 
+    _validate_feed_url(url)
+
     request = urllib.request.Request(url, headers={"User-Agent": "RIL-RSS Reader/1.0"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.read()
+            return response.read(2_000_000)
     except urllib.error.URLError as exc:  # pragma: no cover - network errors tested via ValueError
         raise ValueError(f"Unable to retrieve RSS feed: {exc}") from exc
+
+
+def _validate_feed_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Feed URL must be an absolute http(s) URL")
 
 
 def parse_feed(feed_data: bytes) -> List[RSSItem]:

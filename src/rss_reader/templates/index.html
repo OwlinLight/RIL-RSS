@@ -93,21 +93,24 @@
         event.preventDefault();
         message.textContent = 'Loading feed...';
         results.innerHTML = '';
+        try {
+          const response = await fetch('/api/parse', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: urlInput.value.trim() }),
+          });
 
-        const response = await fetch('/api/parse', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: urlInput.value.trim() }),
-        });
+          const data = await response.json();
+          if (!response.ok) {
+            message.textContent = data.error || 'Failed to load feed.';
+            return;
+          }
 
-        const data = await response.json();
-        if (!response.ok) {
-          message.textContent = data.error || 'Failed to load feed.';
-          return;
+          message.textContent = `Loaded ${data.items.length} items.`;
+          renderItems(data.items);
+        } catch (error) {
+          message.textContent = 'Network error while loading feed.';
         }
-
-        message.textContent = `Loaded ${data.items.length} items.`;
-        renderItems(data.items);
       });
     </script>
   </body>

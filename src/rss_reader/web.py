@@ -15,9 +15,10 @@ def index():
 
 
 @app.post("/api/parse")
+@app.get("/api/parse")
 def parse_url():
     payload = request.get_json(silent=True) or {}
-    url = (payload.get("url") or "").strip()
+    url = (payload.get("url") or request.args.get("url") or "").strip()
 
     if not url:
         return jsonify({"error": "RSS feed URL is required."}), 400

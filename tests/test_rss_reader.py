@@ -2,7 +2,7 @@
 
 import pytest
 
-from rss_reader import RSSItem, display_items, parse_feed
+from rss_reader import RSSItem, display_items, fetch_feed, parse_feed
 from rss_reader.web import app
 
 
@@ -104,3 +104,22 @@ def test_web_parse_endpoint_requires_url():
 
     assert response.status_code == 400
     assert "required" in response.get_json()["error"].lower()
+
+
+def test_web_parse_endpoint_supports_get_query_param(monkeypatch):
+    def fake_parse_feed_url(url):
+        assert url == "https://example.com/feed.xml"
+        return [RSSItem(title="One", link="", description="", pub_date=None)]
+
+    monkeypatch.setattr("rss_reader.web.parse_feed_url", fake_parse_feed_url)
+
+    client = app.test_client()
+    response = client.get("/api/parse?url=https://example.com/feed.xml")
+
+    assert response.status_code == 200
+    assert response.get_json()["items"][0]["title"] == "One"
+
+
+def test_fetch_feed_rejects_non_http_urls():
+    with pytest.raises(ValueError, match="absolute http\\(s\\) URL"):
+        fetch_feed("ftp://example.com/feed.xml")
