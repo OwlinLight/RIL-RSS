@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RIL RSS Reader</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        margin: 0;
+        padding: 2rem;
+        background: #0b1220;
+        color: #edf2f7;
+      }
+      .container { max-width: 960px; margin: 0 auto; }
+      h1 { margin-top: 0; }
+      form { display: flex; gap: 0.75rem; margin-bottom: 1rem; }
+      input {
+        flex: 1;
+        padding: 0.65rem;
+        border: 1px solid #2d3748;
+        border-radius: 8px;
+        background: #111827;
+        color: #edf2f7;
+      }
+      button {
+        padding: 0.65rem 1rem;
+        border: none;
+        border-radius: 8px;
+        background: #3182ce;
+        color: white;
+        cursor: pointer;
+      }
+      .message { margin-bottom: 1rem; min-height: 1.25rem; color: #f6e05e; }
+      .item {
+        background: #111827;
+        border: 1px solid #2d3748;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+      }
+      .item h3 { margin: 0 0 0.4rem 0; }
+      .meta { opacity: 0.8; font-size: 0.875rem; margin-bottom: 0.5rem; }
+      a { color: #63b3ed; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>RIL RSS Reader</h1>
+      <p>Paste a feed URL below to fetch and parse RSS/Atom content.</p>
+      <form id="feed-form">
+        <input id="feed-url" type="url" placeholder="https://example.com/feed.xml" required />
+        <button type="submit">Load feed</button>
+      </form>
+      <div class="message" id="message"></div>
+      <div id="results"></div>
+    </div>
+
+    <script>
+      const form = document.getElementById('feed-form');
+      const urlInput = document.getElementById('feed-url');
+      const message = document.getElementById('message');
+      const results = document.getElementById('results');
+
+      function escapeHtml(value) {
+        return value
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#039;');
+      }
+
+      function renderItems(items) {
+        if (!items.length) {
+          results.innerHTML = '<p>No items found in this feed.</p>';
+          return;
+        }
+
+        results.innerHTML = items
+          .map((item) => {
+            const title = escapeHtml(item.title || 'Untitled');
+            const description = escapeHtml(item.description || '');
+            const pubDate = item.pub_date ? `<div class="meta">Published: ${escapeHtml(item.pub_date)}</div>` : '';
+            const link = item.link ? `<a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer">Open article</a>` : '';
+            return `<article class="item"><h3>${title}</h3>${pubDate}<p>${description}</p>${link}</article>`;
+          })
+          .join('');
+      }
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        message.textContent = 'Loading feed...';
+        results.innerHTML = '';
+
+        const response = await fetch('/api/parse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: urlInput.value.trim() }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          message.textContent = data.error || 'Failed to load feed.';
+          return;
+        }
+
+        message.textContent = `Loaded ${data.items.length} items.`;
+        renderItems(data.items);
+      });
+    </script>
+  </body>
+</html>
